@@ -1,9 +1,12 @@
 {
   "name": "claude-video-plugin",
-  "description": "Marketplace for AI video creation plugins",
+  "owner": {
+    "name": "readonme"
+  },
   "plugins": [
     {
       "name": "video-creator",
+      "source": ".",
       "description": "AI-powered video creation with TTS, image generation, and CapCut/JianYing integration"
     }
   ]

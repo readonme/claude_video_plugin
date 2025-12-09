@@ -6,7 +6,7 @@
   "plugins": [
     {
       "name": "video-creator",
-      "source": ".",
+      "source": "./",
       "description": "AI-powered video creation with TTS, image generation, and CapCut/JianYing integration"
     }
   ]

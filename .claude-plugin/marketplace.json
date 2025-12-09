@@ -1,0 +1,10 @@
+{
+  "name": "claude-video-plugin",
+  "description": "Marketplace for AI video creation plugins",
+  "plugins": [
+    {
+      "name": "video-creator",
+      "description": "AI-powered video creation with TTS, image generation, and CapCut/JianYing integration"
+    }
+  ]
+}

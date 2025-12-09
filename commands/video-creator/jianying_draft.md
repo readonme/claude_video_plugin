@@ -1,0 +1,666 @@
+# Create CapCut Video from Generated Assets
+
+## 任务目标
+从项目文件夹中读取所有生成的资源（脚本、音频、图像），组合成完整视频，自动保存到 JianYing 文件夹。
+
+**重要**：此命令支持多图场景模式 - 每个场景可以包含多张图片，图片数量由 `script_output.json` 中的 `image_count` 字段决定。
+
+## 输入要求
+- **必需参数**：项目文件夹路径
+- **可选参数**：
+  - `--test` / `-t`: 测试模式，仅创建前 3 个场景（默认: `false`）
+  - `--name` / `-n`: 草稿名称前缀（默认: 使用项目文件夹名）
+
+## 用户使用方式
+
+```bash
+# 基本用法（从项目文件夹读取所有资源）
+/video-creator:jianying_draft /path/to/project_folder
+
+# 测试模式（仅创建前 3 个场景）
+/video-creator:jianying_draft /path/to/project_folder --test
+
+# 自定义草稿名称
+/video-creator:jianying_draft /path/to/project_folder --name "toxic_love_video"
+```
+
+## 项目文件夹结构
+
+此命令期望以下项目文件夹结构（支持多图场景）：
+```
+<project_folder>/
+├── script_output.json          # 脚本+提示词（包含 image_count 字段）
+├── audio/                      # 音频文件
+│   ├── audio_001.mp3
+│   ├── audio_002.mp3
+│   └── audio_metadata.json     # 包含 absolute_path 和 duration_ms
+├── images/                     # 图像文件（支持多图命名）
+│   ├── image_001_01.png        # 场景1的第1张图
+│   ├── image_001_02.png        # 场景1的第2张图
+│   ├── image_001_03.png        # 场景1的第3张图
+│   ├── image_002_01.png        # 场景2的第1张图
+│   ├── image_002_02.png        # 场景2的第2张图
+│   ├── image_003.png           # 场景3只有1张图（无后缀）
+│   └── image_metadata.json     # 图像元数据
+└── subtitles.srt              # 生成的字幕文件（本命令生成）
+```
+
+## ⚠️ 重要：多图场景命名规则
+
+**图像文件命名规则**：
+- **单图场景**: `image_XXX.png`（如 `image_003.png`）
+- **多图场景**: `image_XXX_YY.png`（如 `image_001_01.png`, `image_001_02.png`）
+
+**关键字段**：
+- `script_output.json` 中的 `image_count` 字段决定每个场景的图片数量
+- 图片数量 = 1 时，文件名为 `image_XXX.png`
+- 图片数量 > 1 时，文件名为 `image_XXX_01.png`, `image_XXX_02.png`, ...
+
+## ⚠️ 重要：必须使用绝对路径
+
+**CapCut API 不支持相对路径**。所有文件路径（图像、音频、SRT 字幕）都必须使用绝对路径。
+
+## 执行步骤
+
+### Step 1: 验证项目文件夹和资源
+
+1. 验证项目文件夹存在
+2. 读取 `<project_folder>/script_output.json`（获取 `image_count` 字段）
+3. 读取 `<project_folder>/audio/audio_metadata.json`
+4. 扫描 `<project_folder>/images/` 目录获取实际图像文件
+5. 验证资源数量匹配
+
+### Step 2: 确认视频分辨率
+
+**必须使用 AskUserQuestion 工具**询问用户视频分辨率：
+
+```json
+{
+  "questions": [
+    {
+      "question": "请选择视频分辨率",
+      "header": "分辨率",
+      "options": [
+        {
+          "label": "YouTube 横屏 (1920x1080)",
+          "description": "16:9 横屏，适合 YouTube、B站等平台（推荐）"
+        },
+        {
+          "label": "TikTok/抖音 竖屏 (1080x1920)",
+          "description": "9:16 竖屏，适合 TikTok、抖音、Reels 等短视频平台"
+        }
+      ],
+      "multiSelect": false
+    }
+  ]
+}
+```
+
+根据用户选择设置分辨率：
+- **YouTube 横屏**: `width=1920, height=1080`
+- **TikTok 竖屏**: `width=1080, height=1920`
+
+### Step 3: 显示任务概览
+
+**输出格式示例**：
+```
+🎬 创建 CapCut 视频（多图场景模式）
+================================
+项目文件夹: /Users/zhenhaohua/projects/psy_2
+场景数量: 9
+总图片数量: 24（多图场景）
+视频尺寸: 1920x1080 (横屏 YouTube)
+草稿名称: psy_2
+
+✅ 验证完成
+  - 9 个脚本句子
+  - 9 个音频文件
+  - 24 个图像文件
+  - 场景图片分布: [3, 2, 1, 2, 5, 2, 4, 2, 2]
+  - 总时长: 46.44 秒
+
+开始创建视频草稿...
+```
+
+### Step 4: 创建 CapCut 草稿
+
+使用 `mcp__capcut-api__create_draft` 创建新草稿：
+
+```json
+{
+  "width": 1920,
+  "height": 1080,
+  "name": "psy_2"
+}
+```
+
+草稿 ID 格式：`{name}_{timestamp}_{uuid}`
+
+### Step 5: 使用批量工具添加图片和音频
+
+**优先使用批量工具** `add_image_batch` 和 `add_audio_batch` 来提高效率。
+
+#### 5.1 准备图片批量数据
+
+计算每个图片的时间轴位置，构建批量添加数据：
+
+```python
+accumulated_time = 0
+images_batch = []
+
+# 入场动画列表（循环使用）
+INTRO_ANIMATIONS = [
+    "Fade_In", "Zoom_1", "Zoom_2", "Slide_Down", "Slide_Up",
+    "Slide_Left", "Slide_Right", "Rotate", "Flip", "Blinds"
+]
+
+# 转场效果列表（循环使用）
+TRANSITIONS = [
+    "Dissolve", "Mix", "Black_Fade", "White_Flash", "Blur",
+    "Slide", "Wipe_Right", "Wipe_Left", "Flip", "Glitch"
+]
+
+for scene_idx, scene in enumerate(script_output):
+    audio_duration = audio_metadata[scene_idx]['duration_ms'] / 1000
+    image_count = scene.get('image_count', 1)
+    per_image_duration = audio_duration / image_count
+
+    scene_start = accumulated_time
+
+    for img_idx in range(image_count):
+        img_start = scene_start + (img_idx * per_image_duration)
+        img_end = img_start + per_image_duration
+
+        image_config = {
+            "image_url": get_image_path(project_folder, scene_idx, img_idx, image_count),
+            "start": img_start,
+            "end": img_end,
+            "track_name": "main"
+        }
+
+        # 只为场景的第一张图片添加动画和转场
+        if img_idx == 0:
+            image_config["intro_animation"] = INTRO_ANIMATIONS[scene_idx % len(INTRO_ANIMATIONS)]
+            image_config["transition"] = TRANSITIONS[scene_idx % len(TRANSITIONS)]
+
+        images_batch.append(image_config)
+
+    accumulated_time += audio_duration
+```
+
+#### 5.2 使用 add_image_batch 批量添加图片
+
+使用 `mcp__capcut-api__add_image_batch` 一次性添加所有图片：
+
+```json
+{
+  "draft_id": "psy_2_1765088956_6007bf92",
+  "width": 1920,
+  "height": 1080,
+  "images": [
+    {
+      "image_url": "/absolute/path/to/image_001_01.png",
+      "start": 0,
+      "end": 1.62,
+      "track_name": "main",
+      "intro_animation": "Fade_In",
+      "transition": "Dissolve"
+    },
+    {
+      "image_url": "/absolute/path/to/image_001_02.png",
+      "start": 1.62,
+      "end": 3.24,
+      "track_name": "main"
+    },
+    ...
+  ]
+}
+```
+
+#### 5.3 准备音频批量数据
+
+```python
+audios_batch = []
+accumulated_time = 0
+
+for scene_idx, audio_info in enumerate(audio_metadata):
+    audio_duration = audio_info['duration_ms'] / 1000
+
+    audios_batch.append({
+        "audio_url": audio_info['absolute_path'],
+        "start": 0,
+        "end": audio_duration,
+        "target_start": accumulated_time,
+        "track_name": "audio_main"
+    })
+
+    accumulated_time += audio_duration
+```
+
+#### 5.4 使用 add_audio_batch 批量添加音频
+
+使用 `mcp__capcut-api__add_audio_batch` 一次性添加所有音频：
+
+```json
+{
+  "draft_id": "psy_2_1765088956_6007bf92",
+  "width": 1920,
+  "height": 1080,
+  "audios": [
+    {
+      "audio_url": "/absolute/path/to/audio_001.mp3",
+      "start": 0,
+      "end": 3.204,
+      "target_start": 0,
+      "track_name": "audio_main"
+    },
+    {
+      "audio_url": "/absolute/path/to/audio_002.mp3",
+      "start": 0,
+      "end": 2.916,
+      "target_start": 3.204,
+      "track_name": "audio_main"
+    },
+    ...
+  ]
+}
+```
+
+### Step 6: 生成 SRT 字幕文件
+
+使用 `~/.claude/scripts/generate_srt.py` 脚本生成带智能分割的 SRT 文件：
+
+```bash
+python3 ~/.claude/scripts/generate_srt.py <project_folder>
+
+# 示例
+python3 ~/.claude/scripts/generate_srt.py ~/projects/my_video
+```
+
+**脚本功能**：
+- 自动分割过长的字幕（超过 12 词）
+- 按词数比例分配时间
+- 生成标准 SRT 格式文件
+- 支持两种 audio_metadata.json 格式（list 或 dict）
+
+### Step 7: 添加字幕
+
+使用 `mcp__capcut-api__add_subtitle`：
+
+```json
+{
+  "draft_id": "psy_2_1765088956_6007bf92",
+  "srt_path": "/Users/zhenhaohua/projects/psy_2/subtitles.srt",
+  "font": "Poppins_Bold",
+  "font_size": 5,
+  "font_color": "#FFFFFF",
+  "border_color": "#000000",
+  "border_width": 2,
+  "transform_y": -0.8,
+  "width": 1920,
+  "height": 1080
+}
+```
+
+**支持的字体列表**（必须使用以下字体之一）：
+- `Poppins_Bold` - 推荐，清晰易读
+- `Poppins_Regular`
+- `Poppins_Medium`
+- `Poppins_SemiBold`
+- `Poppins_Light`
+- `Roboto_Bold`
+- `Roboto_Regular`
+- `Roboto_Medium`
+- `Open_Sans_Bold`
+- `Open_Sans_Regular`
+- `Montserrat_Bold`
+- `Montserrat_Regular`
+- `Lato_Bold`
+- `Lato_Regular`
+
+⚠️ **重要**: 不要使用 `System Bold` 或其他系统字体，必须从上述列表中选择。
+
+### Step 8: 保存草稿
+
+⚠️ **重要**: `save_draft` 必须在**所有其他操作完成后**单独调用。**绝对不能**与任何其他工具并行执行。
+
+使用 `mcp__capcut-api__save_draft`：
+
+```json
+{
+  "draft_id": "psy_2_1765088956_6007bf92"
+}
+```
+
+**执行顺序要求**：
+1. 完成 `add_image_batch` 调用
+2. 完成 `add_audio_batch` 调用
+3. 完成 `add_subtitle` 调用
+4. 确认以上所有步骤都已成功完成
+5. **最后**单独调用 `save_draft`（不能与任何其他工具并行）
+
+### Step 9: 显示完成摘要
+
+```
+🎉 视频创建完成！
+================================
+✅ 场景数量: 9
+✅ 总图片数量: 24
+⏱️  总时长: 46.44 秒
+📂 草稿 ID: psy_2_1765088956_6007bf92
+📂 草稿位置: /Users/zhenhaohua/Movies/JianyingPro/User Data/Projects/com.lveditor.draft/
+
+场景图片分布:
+  - 场景 1: 3 张图片 (4.86s)
+  - 场景 2: 2 张图片 (4.18s)
+  - 场景 3: 1 张图片 (1.76s)
+  - 场景 4: 2 张图片 (4.50s)
+  - 场景 5: 5 张图片 (10.15s)
+  - 场景 6: 2 张图片 (5.54s)
+  - 场景 7: 4 张图片 (9.04s)
+  - 场景 8: 2 张图片 (3.64s)
+  - 场景 9: 2 张图片 (2.77s)
+
+下一步操作:
+  1. 在 JianYing Pro 中打开草稿
+  2. 预览视频效果
+  3. 导出最终视频
+```
+
+## 时间轴计算逻辑（多图场景）
+
+**核心算法**：
+
+```python
+accumulated_time = 0
+images_batch = []
+audios_batch = []
+
+for scene_idx, scene in enumerate(script_output):
+    audio_info = audio_metadata[scene_idx]
+    audio_duration = audio_info['duration_ms'] / 1000
+    image_count = scene.get('image_count', 1)
+
+    # 计算每张图片的时长
+    per_image_duration = audio_duration / image_count
+
+    # 获取该场景的所有图像路径
+    image_paths = get_image_paths(project_folder, scene_idx, image_count)
+
+    scene_start = accumulated_time
+
+    # 选择动画效果（按场景索引轮换，只用于第一张图片）
+    intro_animation = INTRO_ANIMATIONS[scene_idx % len(INTRO_ANIMATIONS)]
+    transition = TRANSITIONS[scene_idx % len(TRANSITIONS)]
+
+    # 添加该场景的所有图像到批量列表
+    for img_idx, image_path in enumerate(image_paths):
+        img_start = scene_start + (img_idx * per_image_duration)
+        img_end = img_start + per_image_duration
+
+        image_config = {
+            "image_url": image_path,
+            "start": img_start,
+            "end": img_end,
+            "track_name": "main"
+        }
+
+        if img_idx == 0:
+            # 场景的第一张图片：添加动画和转场
+            image_config["intro_animation"] = intro_animation
+            image_config["transition"] = transition
+
+        images_batch.append(image_config)
+
+    # 添加该场景的音频到批量列表
+    audios_batch.append({
+        "audio_url": audio_info['absolute_path'],
+        "start": 0,
+        "end": audio_duration,
+        "target_start": scene_start,
+        "track_name": "audio_main"
+    })
+
+    accumulated_time += audio_duration
+
+# 批量添加图片
+add_image_batch(draft_id, images_batch, width, height)
+
+# 批量添加音频
+add_audio_batch(draft_id, audios_batch, width, height)
+
+# 生成并添加字幕
+srt_path = f"{project_folder}/subtitles.srt"
+add_subtitle(draft_id, srt_path, font="Poppins_Bold", font_size=5, ...)
+```
+
+## 测试模式
+
+使用 `--test` 参数可以快速创建前 3 个场景进行测试：
+
+```bash
+/video-creator:jianying_draft /path/to/project_folder --test
+```
+
+**使用场景**：
+- 测试多图场景的动画和转场效果
+- 验证字幕样式
+- 快速预览视频风格
+- 调试音频和图像匹配问题
+
+## 动画参数说明
+
+- `intro_animation`: 入场动画（如 `Fade_In`, `Zoom_1`, `Slide_Down`）
+- `outro_animation`: 出场动画（如 `Fade_Out`, `Zoom_Out`）
+- `transition`: 转场效果（如 `Dissolve`, `Mix`, `Black_Fade`）
+
+**重要**: 动画名称必须使用正确的大小写和下划线格式
+- ✅ 正确: `Fade_In`, `Zoom_1`, `Dissolve`
+- ❌ 错误: `fade_in`, `zoom-1`, `FADE_IN`
+
+### 支持的入场动画（CapCut_Intro_type）
+
+以下是经过验证的入场动画名称：
+- `Fade_In` - 淡入
+- `Zoom_1` - 缩放1
+- `Zoom_2` - 缩放2
+- `Zoom_In` - 放大
+- `Zoom_Out` - 缩小
+- `Slide_Down` - 向下滑入
+- `Slide_Up` - 向上滑入
+- `Slide_Left` - 向左滑入
+- `Slide_Right` - 向右滑入
+- `Rotate` - 旋转
+- `Flip` - 翻转
+- `Blinds` - 百叶窗
+- `Shake_1` / `Shake_2` / `Shake_3` - 抖动
+- `Swing` - 摇摆
+- `Whirl` - 漩涡
+- `Mini_Zoom` - 微缩放
+- `Puzzle` - 拼图
+- `Wiper` - 雨刷
+
+### 支持的转场效果（CapCut_Transition_type）
+
+以下是经过测试验证的转场效果名称：
+- `Dissolve` - 溶解 ✅
+- `Mix` - 混合 ✅
+- `Black_Fade` - 黑色淡入 ✅
+- `White_Flash` - 白色闪烁 ✅
+- `Blur` - 模糊 ✅
+- `Slide` - 滑动 ✅
+- `Wipe_Right` / `Wipe_Left` / `Wipe_Up` - 擦除 ✅
+- `Flip` - 翻转 ✅
+- `Split` - 分裂 ✅
+- `Pull_in` / `Pull_Out` - 拉入/拉出 ✅
+- `Mosaic` - 马赛克 ✅
+- `Glitch` - 故障 ✅
+- `Blocks` - 方块
+- `Woosh` - 呼啸
+- `Open` - 打开
+- `Switch` - 切换
+- `Cube` - 立方体 ✅
+
+⚠️ **注意**: `Blinds`（百叶窗）只能用于 `intro_animation`，**不能**用于 `transition`
+
+## 边界情况处理
+
+### 项目文件夹不存在
+```
+❌ 错误：项目文件夹不存在 - /path/to/project
+请先运行 /video-creator:scene-and-prompt 命令创建项目
+```
+
+### 缺少必要文件
+```
+❌ 资源验证失败
+
+缺少的文件:
+  - audio/audio_metadata.json
+  - script_output.json
+
+请先运行以下命令生成资源:
+  /video-creator:audio /path/to/project_folder
+  /video-creator:image /path/to/project_folder
+```
+
+### 图像文件缺失
+```
+⚠️ 警告：场景 5 期望 5 张图片，但只找到 3 张
+  期望: image_005_01.png, image_005_02.png, image_005_03.png, image_005_04.png, image_005_05.png
+  找到: image_005_01.png, image_005_02.png, image_005_03.png
+
+将使用找到的 3 张图片继续处理
+```
+
+### image_count 字段缺失
+如果 `script_output.json` 中没有 `image_count` 字段，默认每个场景为 1 张图片（向后兼容）。
+
+## ⚠️ 重要：MCP 工具错误处理
+
+执行过程中必须检查每个 MCP 工具调用的返回结果，并正确处理错误。
+
+### 错误检测规则
+
+每次调用 MCP 工具后，必须检查返回结果：
+
+```python
+# 检查返回结果
+result = mcp__capcut-api__add_image_batch(...)
+
+if result.get("success") == False:
+    # 记录错误
+    error_msg = result.get("error", "Unknown error")
+    errors.append({"error": error_msg})
+```
+
+### 常见错误类型
+
+1. **不支持的动画类型**：
+   ```json
+   {
+     "success": false,
+     "error": "Warning: Unsupported entrance animation type Float_Up_1, this parameter will be ignored"
+   }
+   ```
+   **处理方式**：记录警告，图片仍会添加但动画被忽略
+
+2. **不支持的转场类型**：
+   ```json
+   {
+     "success": false,
+     "error": "Warning: Unsupported transition type RotationEnlarge, this parameter will be ignored"
+   }
+   ```
+   **处理方式**：记录警告，图片仍会添加但转场被忽略
+
+3. **文件路径错误**：
+   ```json
+   {
+     "success": false,
+     "error": "File not found: /path/to/image.png"
+   }
+   ```
+   **处理方式**：记录错误，继续处理其他图片
+
+### 错误汇总报告
+
+在视频创建完成后，必须显示错误汇总：
+
+```
+🎬 视频创建完成
+================================
+
+⚠️ 创建过程中遇到以下警告/错误：
+
+警告 (4):
+  - 场景 3: 不支持的入场动画 "Float_Up_1"，已忽略
+  - 场景 4: 不支持的入场动画 "Zoom_Rotate_1"，已忽略
+
+错误 (0):
+  无
+
+✅ 所有 23 张图片已添加（4 张图片的动画参数被忽略）
+✅ 所有 9 个音频文件已添加
+✅ 字幕已添加
+✅ 草稿已保存
+
+📂 草稿 ID: psy_2_1765089986_60a7edef
+```
+
+### 不要显示成功，如果有错误
+
+**重要**：如果存在任何错误或警告，最终摘要必须明确指出，而不是只显示"视频创建完成！"
+
+❌ **错误做法**：
+```
+🎉 视频创建完成！
+================================
+✅ 场景数量: 9
+✅ 总图片数量: 23
+```
+
+✅ **正确做法**：
+```
+🎬 视频创建完成（有警告）
+================================
+✅ 场景数量: 9
+✅ 总图片数量: 23
+
+⚠️ 警告：4 个图片的动画参数不受支持，已被忽略
+  详情：
+  - 场景 3: Float_Up_1 不支持
+  - 场景 4: Zoom_Rotate_1 不支持
+
+建议：请参考文档中的"支持的入场动画"列表，使用有效的动画名称
+```
+
+## 成功标准
+
+✅ 任务成功的标志：
+1. 成功从项目文件夹读取所有资源（包括 `image_count` 字段）
+2. 询问用户确认视频分辨率（YouTube 横屏 或 TikTok 竖屏）
+3. 创建带名称前缀的 CapCut 草稿
+4. 使用 `add_image_batch` 批量添加所有图片
+5. 使用 `add_audio_batch` 批量添加所有音频
+6. 生成 SRT 字幕文件并添加字幕
+7. 成功保存草稿到 JianYing 文件夹
+8. 草稿可在 JianYing Pro 中正常打开和预览
+
+## 注意事项
+
+- **使用绝对路径**: 必须使用绝对路径，CapCut API 不支持相对路径
+- **优先使用批量工具**: 使用 `add_image_batch` 和 `add_audio_batch` 代替逐个添加
+- **确认分辨率**: 开始前必须询问用户选择 YouTube 横屏或 TikTok 竖屏
+- **多图命名规则**: 单图为 `image_XXX.png`，多图为 `image_XXX_YY.png`
+- **时长分配**: 场景音频时长平均分配给该场景的所有图片
+- **动画规则**: 只在场景的**第一张图片**添加动画和转场，场景内的后续图片直接切换（无动画）
+- **动画轮换**: 按**场景索引**轮换，而非全局图片索引
+- **音频只添加一次**: 每个场景的音频只添加一次，不要为每张图片重复添加
+- **草稿名称**: 使用 `--name` 参数或默认使用项目文件夹名作为草稿前缀
+- **时长精确性**: 使用音频元数据中的精确时长，不要估算
+- **场景顺序**: 必须严格按照 JSON 数组顺序添加场景
+- **字幕类型**: 使用 `add_subtitle` 确保正确的 `type: subtitle`
+- **字体选择**: 必须使用支持的字体（如 `Poppins_Bold`），不要使用 `System Bold` 等系统字体
+- **保存顺序**: `save_draft` 必须在所有其他操作完成后单独调用，**绝对不能**与任何工具并行执行
+- **向后兼容**: 如果 `image_count` 字段缺失，默认为 1 张图片

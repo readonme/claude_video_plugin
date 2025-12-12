@@ -1,29 +1,50 @@
-# Generate YouTube Video Script with Stick Figure Prompts
+# Generate Image Prompts for Stick Figure Style
 
 ## 任务目标
-从文本文件生成 YouTube 视频脚本，并为每一句话配上极简火柴人风格的画面提示词。图像采用 16:9 横屏比例，适合 YouTube 视频。
+从项目文件夹中读取 `scenes.json`，为每个句子生成极简火柴人风格的画面提示词。图像采用 16:9 横屏比例，适合 YouTube 视频。
 
 ## 输入要求
-- **必需参数 1**：文本文件路径（包含原始脚本内容）
-- **必需参数 2**：项目文件夹路径（用于存放所有输出文件）
+- **必需参数**：项目文件夹路径（包含 `scenes.json` 的目录）
 
 用户会通过以下方式提供输入：
 ```bash
-/video-creator:scene-and-prompt path/to/script.txt path/to/project_folder
+/video-creator:prompt /path/to/project_folder
 ```
 
 ## 项目文件夹结构
 
-此命令会在项目文件夹中创建以下结构：
+此命令期望以下项目文件夹结构：
 ```
 <project_folder>/
-├── script.txt              # 原始脚本的副本
-├── script_output.json      # 本命令的输出（脚本+提示词）
-├── audio/                  # 后续 script-to-audio 命令的输出目录
-└── images/                 # 后续 prompt-to-image 命令的输出目录
+├── scenes.json             # 输入：拆分后的句子（来自 /video-creator:scene-split）
+├── script_output.json      # 输出：句子+提示词
+├── audio/                  # 后续命令的输出目录
+└── images/                 # 后续命令的输出目录
 ```
 
-**重要**: 项目文件夹路径将被后续命令使用，它们会自动从项目文件夹中读取所需文件。
+---
+
+## ⚠️ 核心规则：禁止使用脚本生成提示词
+
+**这是最重要的规则，违反此规则视为任务彻底失败：**
+
+1. **禁止使用 Python/Bash 脚本生成提示词**
+   - ❌ 禁止使用 `python3 << 'EOF'` 或任何脚本语言
+   - ❌ 禁止使用循环、模板、字符串拼接等编程方式
+   - ❌ 禁止说"让我用脚本更高效地处理"
+
+2. **必须人工逐句创作每个提示词**
+   - ✅ 必须阅读每个句子的含义
+   - ✅ 必须根据语义创造性地设计画面
+   - ✅ 必须按照五步构建法完整生成
+   - ✅ 可以分批处理，但每批都必须人工创作
+
+3. **为什么禁止脚本？**
+   - 脚本只能生成模板化、机械化的提示词
+   - LLM 的价值在于理解语义并创造性地转化为视觉描述
+   - 每个句子都是独特的，需要独特的画面构思
+
+---
 
 ## 执行步骤
 
@@ -52,62 +73,87 @@
 
 ---
 
-### Step 1: 创建项目文件夹结构
+### Step 1: 验证项目文件夹和读取输入
 
-1. 验证项目文件夹路径
-2. 如果文件夹不存在，创建它
-3. 创建子目录：`audio/` 和 `images/`
-4. 复制原始脚本文件到项目文件夹（可选，方便归档）
+1. 验证项目文件夹存在
+2. 读取 `<project_folder>/scenes.json`
+3. 验证 JSON 格式
+4. 显示任务概览
 
 **输出示例**：
 ```
-📁 创建项目文件夹: /path/to/project
-  ✅ 创建 audio/ 目录
-  ✅ 创建 images/ 目录
-  ✅ 复制脚本文件到项目文件夹
-```
+🎨 生成画面提示词
+================================
+项目文件夹: /path/to/project
+输入文件: scenes.json
+句子总数: 174
+图像模式: 多图模式
+预估图片数: 450+
 
-### Step 2: 读取并拆分文本
-
-1. 读取输入文本文件的完整内容
-2. 按句子拆分成数组（一句话一个元素）
-   - **英文文本**：使用句号（.）、问号（?）、感叹号（!）作为主要分隔符
-   - **中文文本**：使用句号（。）、问号（？）、感叹号（！）作为主要分隔符
-   - 保留每句话的标点符号
-3. **智能长度控制**（适合 YouTube 视频脚本的最佳长度）：
-   - **目标长度**：每句 10-20 个英文单词（或 15-30 个中文字符）
-   - **最大长度**：不超过 25 个英文单词（或 40 个中文字符）
-   - **拆分策略**：
-     - 英文：如果句子超过 25 个单词，在逗号、分号、冒号、连接词（but, and, or, when, while, because）处智能拆分
-     - 中文：如果句子超过 40 个字符，在逗号（，）、分号（；）、冒号（：）处拆分
-     - 拆分后的片段必须保持语义完整，每个片段可以独立作为视频字幕展示
-4. 去除空白句子和纯空格行
-5. **如果是多图模式**：统计每句话的单词数量（用于计算图片数量）
-6. **直接输出**拆分后的句子列表并**立即继续**生成提示词（不等待用户确认）
-
-**输出格式示例（单图模式）**：
-```
-找到 14 个句子：
-1. Your brain on toxic love is like a slot machine player at 3 a.m.
-2. Same reward patterns, same addiction cycles, same panic when the machine stops paying out.
-3. ...
-
-正在生成画面提示词...
-```
-
-**输出格式示例（多图模式）**：
-```
-找到 14 个句子：
-1. [14 words] Your brain on toxic love is like a slot machine player at 3 a.m.
-2. [13 words] Same reward patterns, same addiction cycles, same panic when the machine stops paying out.
-3. ...
-
-正在生成画面提示词...
+准备生成提示词...
 ```
 
 ---
 
-### Step 3: 生成极简火柴人画面提示词
+### Step 2: 分批生成提示词（核心步骤）
+
+#### 🔢 批次划分规则
+
+根据句子总数自动划分批次：
+
+| 句子总数 | 每批数量 | 批次数 |
+|---------|---------|-------|
+| 1-20 | 全部 | 1 批 |
+| 21-50 | 15 | 3-4 批 |
+| 51-100 | 20 | 5-6 批 |
+| 101-200 | 20 | 6-10 批 |
+| 201+ | 25 | 根据总数计算 |
+
+#### 📋 批次处理流程
+
+**对于每一批，必须执行以下流程：**
+
+```
+═══════════════════════════════════════════════════════════════
+📦 批次 1/9：处理句子 1-20
+═══════════════════════════════════════════════════════════════
+
+句子 1: "Your brain on toxic love is like a slot machine player at 3 a.m."
+└─ 提示词: Generate three images of digital drawing, stick figure style, beige background, 16:9 aspect ratio, widescreen horizontal composition: first image shows a stick figure with heart-shaped eyes standing mesmerized in front of a glowing slot machine with heart symbols on reels, second image shows this figure frantically pulling the lever with sweat drops and trembling hands desperate expression, third image shows the same character slumped in chair exhausted clock on wall showing 3:00 AM dim lighting effect through minimal lines, minimalistic, no shading, clean lines, no texture
+
+句子 2: "Same reward patterns, same addiction cycles, same panic when the machine stops paying out."
+└─ 提示词: ...
+
+[继续处理句子 3-20...]
+
+✅ 批次 1 完成：20/20 句子已处理
+📊 累计进度：20/174 (11.5%)
+═══════════════════════════════════════════════════════════════
+```
+
+#### ⚡ 重要：批次之间不要等待
+
+- 完成一批后，**立即开始下一批**
+- 不要询问用户"是否继续"
+- 不要停下来让用户确认
+- 保持连续工作直到所有批次完成
+
+#### 🔄 批次间保存机制
+
+为防止意外中断导致工作丢失：
+
+1. **每完成一批后**，将已完成的部分追加保存到临时文件：
+   - 文件名：`<project_folder>/script_output_partial.json`
+   - 每批完成后更新此文件
+
+2. **断点续传机制**：如果发现 `script_output_partial.json` 存在：
+   - 读取已完成的句子数量
+   - 从下一句继续处理
+   - 提示用户：`🔄 检测到之前的进度，从句子 X 继续...`
+
+---
+
+### Step 2.5: 五步构建法详解
 
 #### 📊 多图模式：图片数量计算规则
 
@@ -216,12 +262,16 @@ Generate three images of digital drawing, stick figure style, beige background, 
 
 ---
 
-### Step 4: 生成输出文件
+### Step 3: 合并并生成最终输出文件
 
-将结果保存到项目文件夹中：
+当所有批次完成后：
 
-#### JSON 文件（主输出）
-保存为 `<project_folder>/script_output.json`：
+1. **合并所有批次结果**为一个完整的 JSON 数组
+2. **验证完整性**：确保句子数量与输入匹配
+3. **保存最终文件**：`<project_folder>/script_output.json`
+4. **清理临时文件**：删除 `script_output_partial.json`
+
+#### JSON 文件格式
 
 **单图模式输出格式**：
 ```json
@@ -253,15 +303,16 @@ Generate three images of digital drawing, stick figure style, beige background, 
 
 ---
 
-### Step 5: 显示完成摘要和后续命令
+### Step 4: 显示完成摘要和后续命令
 
 **单图模式摘要**：
 ```
-🎉 脚本和提示词生成完成！
+🎉 提示词生成完成！
 ================================
 📂 项目文件夹: /path/to/project
-📝 脚本输出: script_output.json
-📊 句子数量: 14
+📝 输出文件: script_output.json
+📊 句子数量: 174
+📦 处理批次: 9 批
 🖼️  图像模式: 单图模式（每句1张）
 🎨 风格: 极简火柴人
 
@@ -273,12 +324,13 @@ Generate three images of digital drawing, stick figure style, beige background, 
 
 **多图模式摘要**：
 ```
-🎉 脚本和提示词生成完成！
+🎉 提示词生成完成！
 ================================
 📂 项目文件夹: /path/to/project
-📝 脚本输出: script_output.json
-📊 句子数量: 14
-📸 总图片数量: 38（根据单词数自动计算）
+📝 输出文件: script_output.json
+📊 句子数量: 174
+📸 总图片数量: 453（根据单词数自动计算）
+📦 处理批次: 9 批
 🖼️  图像模式: 多图模式（每5词1张）
 🎨 风格: 极简火柴人
 
@@ -292,23 +344,18 @@ Generate three images of digital drawing, stick figure style, beige background, 
 
 ## 边界情况处理
 
-### 空文件或无有效句子
-如果输入文件为空或拆分后没有有效句子，输出：
-```json
-[]
+### scenes.json 不存在
+如果项目文件夹中没有 `scenes.json`：
 ```
-并提示用户：`⚠️ 输入文件为空或没有找到有效的句子。`
+❌ 错误：找不到 scenes.json
+请先运行: /video-creator:scene /path/to/script.txt /path/to/project
+```
 
-### 文件不存在
-如果输入文件路径不存在，停止执行并提示：`❌ 错误：文件不存在 - {file_path}`
-
-### 项目文件夹已存在
-如果项目文件夹已存在且包含 `script_output.json`：
+### 项目文件夹不存在
+如果项目文件夹不存在：
 ```
-⚠️ 项目文件夹已存在且包含之前的输出
-是否覆盖？(y/n)
+❌ 错误：项目文件夹不存在 - {folder_path}
 ```
-或自动备份旧文件为 `script_output.json.bak`
 
 ### 多图模式使用中文脚本
 如果用户选择多图模式但脚本包含中文：
@@ -317,21 +364,26 @@ Generate three images of digital drawing, stick figure style, beige background, 
 是否切换到单图模式？(y/n)
 ```
 
+### 意外中断
+如果处理过程中意外中断：
+- 下次运行时检测 `script_output_partial.json`
+- 提示用户是否从断点继续
+
 ---
 
 ## 成功标准
 
 ✅ 任务成功的标志：
 1. **正确询问并记录用户选择的图像模式**
-2. 成功创建项目文件夹结构（包含 audio/ 和 images/ 子目录）
-3. 成功读取并拆分输入文件
+2. 成功读取 `scenes.json`
+3. **严格分批处理，每批人工生成提示词**（禁止使用脚本）
 4. **单图模式**：每个句子生成 1 个提示词
 5. **多图模式**：正确计算 image_count = ceil(word_count / 5)，提示词以 `Generate [N] images of` 开头
 6. 所有提示词都包含 `16:9 aspect ratio`, `widescreen horizontal composition`
 7. 所有提示词都以否定词约束结尾（`no shading`, `no texture`, `clean lines`）
 8. 多人场景包含了个体差异描述
-9. 成功生成 JSON 文件到项目文件夹
-10. 终端显示预览表格和后续命令提示
+9. 成功生成 `script_output.json` 文件
+10. 显示完成摘要和后续命令提示
 
 ---
 
@@ -343,4 +395,4 @@ Generate three images of digital drawing, stick figure style, beige background, 
 - **背景必须是米色**：`beige background` 是强制要求
 - **横屏规格**：所有提示词都必须包含 `16:9 aspect ratio`, `widescreen horizontal composition`
 - **多人场景必须体现差异**：至少描述 3-5 种个体特征差异
-- **项目文件夹路径**：后续命令只需要项目文件夹路径，无需重复指定各种文件路径
+- **🚫 绝对禁止使用脚本生成提示词**：这是本命令的核心要求

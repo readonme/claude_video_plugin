@@ -2,7 +2,7 @@
 """
 Generate SRT subtitle files with smart splitting for long text.
 
-This script reads audio metadata and script data from a project folder,
+This script reads script data and audio files from a project folder,
 then generates an SRT file with automatic subtitle splitting for long sentences.
 
 Usage:
@@ -11,12 +11,24 @@ Usage:
 Example:
     python generate_srt.py psy
     python generate_srt.py psy --max-words 10
+
+Requirements:
+    pip install mutagen
 """
 
 import argparse
 import json
 import os
 import sys
+from pathlib import Path
+
+try:
+    from mutagen.mp3 import MP3
+    from mutagen.flac import FLAC
+    from mutagen.oggvorbis import OggVorbis
+    MUTAGEN_AVAILABLE = True
+except ImportError:
+    MUTAGEN_AVAILABLE = False
 
 
 def format_timestamp(ms: float) -> str:
@@ -26,6 +38,37 @@ def format_timestamp(ms: float) -> str:
     seconds = int((ms % 60000) // 1000)
     millis = int(ms % 1000)
     return f"{hours:02d}:{minutes:02d}:{seconds:02d},{millis:03d}"
+
+
+def get_audio_duration_ms(audio_path: str) -> float:
+    """
+    Get audio duration in milliseconds from file.
+
+    Args:
+        audio_path: Path to the audio file
+
+    Returns:
+        Duration in milliseconds
+    """
+    if not MUTAGEN_AVAILABLE:
+        raise ImportError("mutagen library is required. Install with: pip install mutagen")
+
+    ext = Path(audio_path).suffix.lower()
+
+    if ext == '.mp3':
+        audio = MP3(audio_path)
+    elif ext == '.flac':
+        audio = FLAC(audio_path)
+    elif ext in ('.ogg', '.oga'):
+        audio = OggVorbis(audio_path)
+    else:
+        # Try generic mutagen for other formats
+        from mutagen import File
+        audio = File(audio_path)
+        if audio is None:
+            raise ValueError(f"Unsupported audio format: {ext}")
+
+    return audio.info.length * 1000  # Convert seconds to milliseconds
 
 
 def split_subtitle(text: str, max_words: int = 12) -> list[str]:
@@ -84,31 +127,56 @@ def calculate_timing(segments: list[str], start_ms: float, end_ms: float) -> lis
     return timings
 
 
-def load_data(project_folder: str) -> tuple[dict, list]:
+def get_audio_files(audio_folder: str) -> list[str]:
     """
-    Load audio metadata and script data from project folder.
+    Get sorted list of audio files from the audio folder.
+
+    Args:
+        audio_folder: Path to the audio folder
+
+    Returns:
+        List of audio file paths sorted by filename (audio_001.mp3, audio_002.mp3, ...)
+    """
+    audio_extensions = {'.mp3', '.wav', '.flac', '.ogg', '.m4a'}
+    audio_files = []
+
+    for f in os.listdir(audio_folder):
+        if Path(f).suffix.lower() in audio_extensions:
+            audio_files.append(os.path.join(audio_folder, f))
+
+    # Sort by filename to ensure correct order (audio_001, audio_002, ...)
+    audio_files.sort(key=lambda x: os.path.basename(x))
+
+    return audio_files
+
+
+def load_data(project_folder: str) -> tuple[list[str], list[dict]]:
+    """
+    Load audio files and script data from project folder.
 
     Args:
         project_folder: Path to the project folder
 
     Returns:
-        Tuple of (audio_metadata, script_data)
+        Tuple of (audio_file_paths, script_data)
     """
-    audio_meta_path = os.path.join(project_folder, 'audio', 'audio_metadata.json')
+    audio_folder = os.path.join(project_folder, 'audio')
     script_path = os.path.join(project_folder, 'script_output.json')
 
-    if not os.path.exists(audio_meta_path):
-        raise FileNotFoundError(f"Audio metadata not found: {audio_meta_path}")
+    if not os.path.exists(audio_folder):
+        raise FileNotFoundError(f"Audio folder not found: {audio_folder}")
     if not os.path.exists(script_path):
         raise FileNotFoundError(f"Script output not found: {script_path}")
 
-    with open(audio_meta_path, 'r', encoding='utf-8') as f:
-        audio_meta = json.load(f)
+    audio_files = get_audio_files(audio_folder)
+
+    if not audio_files:
+        raise FileNotFoundError(f"No audio files found in: {audio_folder}")
 
     with open(script_path, 'r', encoding='utf-8') as f:
         script_data = json.load(f)
 
-    return audio_meta, script_data
+    return audio_files, script_data
 
 
 def generate_srt(project_folder: str, max_words: int = 12, output_path: str = None) -> str:
@@ -123,25 +191,22 @@ def generate_srt(project_folder: str, max_words: int = 12, output_path: str = No
     Returns:
         Path to the generated SRT file
     """
-    audio_meta, script_data = load_data(project_folder)
+    audio_files, script_data = load_data(project_folder)
 
     srt_content = []
     srt_index = 1
     current_time_ms = 0
     split_count = 0
 
-    # Handle both list format and dict format
-    if isinstance(audio_meta, list):
-        audio_files = audio_meta
-    else:
-        audio_files = audio_meta.get('audio_files', [])
-
     if len(audio_files) != len(script_data):
         print(f"Warning: Audio files ({len(audio_files)}) and script entries ({len(script_data)}) count mismatch")
 
-    for i, (audio, script) in enumerate(zip(audio_files, script_data)):
+    for i, (audio_path, script) in enumerate(zip(audio_files, script_data)):
+        # Get duration directly from audio file
+        duration_ms = get_audio_duration_ms(audio_path)
+
         start_ms = current_time_ms
-        end_ms = start_ms + audio['duration_ms']
+        end_ms = start_ms + duration_ms
 
         text = script.get('script', '')
         segments = split_subtitle(text, max_words)
@@ -194,6 +259,11 @@ def main():
     )
 
     args = parser.parse_args()
+
+    # Check if mutagen is available
+    if not MUTAGEN_AVAILABLE:
+        print("Error: mutagen library is required. Install with: pip install mutagen")
+        sys.exit(1)
 
     # Check if project folder exists
     if not os.path.isdir(args.project_folder):

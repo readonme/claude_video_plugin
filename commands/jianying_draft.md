@@ -33,7 +33,7 @@
 ├── audio/                      # 音频文件
 │   ├── audio_001.mp3
 │   ├── audio_002.mp3
-│   └── audio_metadata.json     # 包含 absolute_path 和 duration_ms
+│   └── ...
 ├── images/                     # 图像文件（支持多图命名）
 │   ├── image_001_01.png        # 场景1的第1张图
 │   ├── image_001_02.png        # 场景1的第2张图
@@ -41,7 +41,7 @@
 │   ├── image_002_01.png        # 场景2的第1张图
 │   ├── image_002_02.png        # 场景2的第2张图
 │   ├── image_003.png           # 场景3只有1张图（无后缀）
-│   └── image_metadata.json     # 图像元数据
+│   └── ...
 └── subtitles.srt              # 生成的字幕文件（本命令生成）
 ```
 
@@ -66,9 +66,25 @@
 
 1. 验证项目文件夹存在
 2. 读取 `<project_folder>/script_output.json`（获取 `image_count` 字段）
-3. 读取 `<project_folder>/audio/audio_metadata.json`
+3. 扫描 `<project_folder>/audio/` 目录获取音频文件列表（按文件名排序）
 4. 扫描 `<project_folder>/images/` 目录获取实际图像文件
 5. 验证资源数量匹配
+
+**获取音频时长**：使用 `mutagen` 库直接从音频文件读取时长，无需 metadata 文件。
+
+```python
+from mutagen.mp3 import MP3
+
+def get_audio_duration_ms(audio_path: str) -> float:
+    """获取音频文件时长（毫秒）"""
+    audio = MP3(audio_path)
+    return audio.info.length * 1000
+
+# 扫描音频文件
+audio_folder = f"{project_folder}/audio"
+audio_files = sorted([f for f in os.listdir(audio_folder) if f.endswith('.mp3')])
+audio_paths = [os.path.join(audio_folder, f) for f in audio_files]
+```
 
 ### Step 2: 确认视频分辨率
 
@@ -136,56 +152,37 @@
 
 草稿 ID 格式：`{name}_{timestamp}_{uuid}`
 
-### Step 5: 使用批量工具添加图片和音频
+### Step 5: 准备批量数据并添加图片和音频
 
-**优先使用批量工具** `add_image_batch` 和 `add_audio_batch` 来提高效率。
+#### 5.1 使用脚本准备批量数据
 
-#### 5.1 准备图片批量数据
+使用 `~/.claude/scripts/prepare_batch_data.py` 脚本生成批量数据：
 
-计算每个图片的时间轴位置，构建批量添加数据：
+```bash
+python3 ~/.claude/scripts/prepare_batch_data.py <project_folder>
 
-```python
-accumulated_time = 0
-images_batch = []
+# 示例
+python3 ~/.claude/scripts/prepare_batch_data.py /Users/zhenhaohua/code/test_empty/r2_0
+```
 
-# 入场动画列表（循环使用）
-INTRO_ANIMATIONS = [
-    "Fade_In", "Zoom_1", "Zoom_2", "Slide_Down", "Slide_Up",
-    "Slide_Left", "Slide_Right", "Rotate", "Flip", "Blinds"
-]
+**脚本功能**：
+- 读取 `script_output.json` 获取场景信息和 `image_count`
+- 扫描 `audio/` 目录获取音频文件，使用 `mutagen` 读取精确时长
+- 扫描 `images/` 目录获取图片文件
+- 计算每个图片的时间轴位置
+- 为每个场景的第一张图片添加入场动画和转场效果
+- 生成 `images_batch.json` 和 `audios_batch.json`
 
-# 转场效果列表（循环使用）
-TRANSITIONS = [
-    "Dissolve", "Mix", "Black_Fade", "White_Flash", "Blur",
-    "Slide", "Wipe_Right", "Wipe_Left", "Flip", "Glitch"
-]
+**输出示例**：
+```
+Total scenes: 221
+Total images: 416
+Total audios: 221
+Total duration: 651.10 seconds (10.85 minutes)
 
-for scene_idx, scene in enumerate(script_output):
-    audio_duration = audio_metadata[scene_idx]['duration_ms'] / 1000
-    image_count = scene.get('image_count', 1)
-    per_image_duration = audio_duration / image_count
-
-    scene_start = accumulated_time
-
-    for img_idx in range(image_count):
-        img_start = scene_start + (img_idx * per_image_duration)
-        img_end = img_start + per_image_duration
-
-        image_config = {
-            "image_url": get_image_path(project_folder, scene_idx, img_idx, image_count),
-            "start": img_start,
-            "end": img_end,
-            "track_name": "main"
-        }
-
-        # 只为场景的第一张图片添加动画和转场
-        if img_idx == 0:
-            image_config["intro_animation"] = INTRO_ANIMATIONS[scene_idx % len(INTRO_ANIMATIONS)]
-            image_config["transition"] = TRANSITIONS[scene_idx % len(TRANSITIONS)]
-
-        images_batch.append(image_config)
-
-    accumulated_time += audio_duration
+Batch data saved:
+  - /Users/zhenhaohua/code/test_empty/r2_0/images_batch.json
+  - /Users/zhenhaohua/code/test_empty/r2_0/audios_batch.json
 ```
 
 #### 5.2 使用 add_image_batch 批量添加图片
@@ -217,27 +214,7 @@ for scene_idx, scene in enumerate(script_output):
 }
 ```
 
-#### 5.3 准备音频批量数据
-
-```python
-audios_batch = []
-accumulated_time = 0
-
-for scene_idx, audio_info in enumerate(audio_metadata):
-    audio_duration = audio_info['duration_ms'] / 1000
-
-    audios_batch.append({
-        "audio_url": audio_info['absolute_path'],
-        "start": 0,
-        "end": audio_duration,
-        "target_start": accumulated_time,
-        "track_name": "audio_main"
-    })
-
-    accumulated_time += audio_duration
-```
-
-#### 5.4 使用 add_audio_batch 批量添加音频
+#### 5.3 使用 add_audio_batch 批量添加音频
 
 使用 `mcp__capcut-api__add_audio_batch` 一次性添加所有音频：
 
@@ -281,9 +258,11 @@ python3 ~/.claude/scripts/generate_srt.py ~/projects/my_video
 - 自动分割过长的字幕（超过 12 词）
 - 按词数比例分配时间
 - 生成标准 SRT 格式文件
-- 支持两种 audio_metadata.json 格式（list 或 dict）
+- 直接从音频文件读取时长（使用 mutagen 库）
 
 ### Step 7: 添加字幕
+
+⚠️ **字体必须使用 `Poppins_Bold`**，不要使用 `System Bold` 或任何其他字体！
 
 使用 `mcp__capcut-api__add_subtitle`：
 
@@ -302,23 +281,20 @@ python3 ~/.claude/scripts/generate_srt.py ~/projects/my_video
 }
 ```
 
-**支持的字体列表**（必须使用以下字体之一）：
-- `Poppins_Bold` - 推荐，清晰易读
-- `Poppins_Regular`
-- `Poppins_Medium`
-- `Poppins_SemiBold`
-- `Poppins_Light`
-- `Roboto_Bold`
-- `Roboto_Regular`
-- `Roboto_Medium`
-- `Open_Sans_Bold`
-- `Open_Sans_Regular`
-- `Montserrat_Bold`
-- `Montserrat_Regular`
-- `Lato_Bold`
-- `Lato_Regular`
+#### 🚫 禁止使用的字体
+- ❌ `System Bold` - 不支持，会报错
+- ❌ `Arial` - 不支持
+- ❌ 任何系统字体
 
-⚠️ **重要**: 不要使用 `System Bold` 或其他系统字体，必须从上述列表中选择。
+#### ✅ 默认字体（直接使用，无需修改）
+- **`Poppins_Bold`** - 默认字体，清晰易读，无需更改
+
+#### 其他支持的字体（仅供参考）
+- `Poppins_Regular`, `Poppins_Medium`, `Poppins_SemiBold`, `Poppins_Light`
+- `Roboto_Bold`, `Roboto_Regular`, `Roboto_Medium`
+- `Open_Sans_Bold`, `Open_Sans_Regular`
+- `Montserrat_Bold`, `Montserrat_Regular`
+- `Lato_Bold`, `Lato_Regular`
 
 ### Step 8: 保存草稿
 
@@ -371,68 +347,14 @@ python3 ~/.claude/scripts/generate_srt.py ~/projects/my_video
 
 **核心算法**：
 
-```python
-accumulated_time = 0
-images_batch = []
-audios_batch = []
+此逻辑已封装在 `~/.claude/scripts/prepare_batch_data.py` 脚本中。
 
-for scene_idx, scene in enumerate(script_output):
-    audio_info = audio_metadata[scene_idx]
-    audio_duration = audio_info['duration_ms'] / 1000
-    image_count = scene.get('image_count', 1)
-
-    # 计算每张图片的时长
-    per_image_duration = audio_duration / image_count
-
-    # 获取该场景的所有图像路径
-    image_paths = get_image_paths(project_folder, scene_idx, image_count)
-
-    scene_start = accumulated_time
-
-    # 选择动画效果（按场景索引轮换，只用于第一张图片）
-    intro_animation = INTRO_ANIMATIONS[scene_idx % len(INTRO_ANIMATIONS)]
-    transition = TRANSITIONS[scene_idx % len(TRANSITIONS)]
-
-    # 添加该场景的所有图像到批量列表
-    for img_idx, image_path in enumerate(image_paths):
-        img_start = scene_start + (img_idx * per_image_duration)
-        img_end = img_start + per_image_duration
-
-        image_config = {
-            "image_url": image_path,
-            "start": img_start,
-            "end": img_end,
-            "track_name": "main"
-        }
-
-        if img_idx == 0:
-            # 场景的第一张图片：添加动画和转场
-            image_config["intro_animation"] = intro_animation
-            image_config["transition"] = transition
-
-        images_batch.append(image_config)
-
-    # 添加该场景的音频到批量列表
-    audios_batch.append({
-        "audio_url": audio_info['absolute_path'],
-        "start": 0,
-        "end": audio_duration,
-        "target_start": scene_start,
-        "track_name": "audio_main"
-    })
-
-    accumulated_time += audio_duration
-
-# 批量添加图片
-add_image_batch(draft_id, images_batch, width, height)
-
-# 批量添加音频
-add_audio_batch(draft_id, audios_batch, width, height)
-
-# 生成并添加字幕
-srt_path = f"{project_folder}/subtitles.srt"
-add_subtitle(draft_id, srt_path, font="Poppins_Bold", font_size=5, ...)
-```
+脚本核心逻辑：
+1. 遍历 `script_output.json` 中的每个场景
+2. 使用 `mutagen` 读取对应音频文件的精确时长
+3. 根据 `image_count` 计算每张图片的展示时长
+4. 为每个场景的第一张图片添加入场动画和转场效果（循环使用动画列表）
+5. 生成 `images_batch.json` 和 `audios_batch.json` 供 CapCut API 使用
 
 ## 测试模式
 
@@ -515,8 +437,8 @@ add_subtitle(draft_id, srt_path, font="Poppins_Bold", font_size=5, ...)
 ```
 ❌ 资源验证失败
 
-缺少的文件:
-  - audio/audio_metadata.json
+缺少的文件/目录:
+  - audio/ 目录不存在或为空
   - script_output.json
 
 请先运行以下命令生成资源:
@@ -658,7 +580,7 @@ if result.get("success") == False:
 - **动画轮换**: 按**场景索引**轮换，而非全局图片索引
 - **音频只添加一次**: 每个场景的音频只添加一次，不要为每张图片重复添加
 - **草稿名称**: 使用 `--name` 参数或默认使用项目文件夹名作为草稿前缀
-- **时长精确性**: 使用音频元数据中的精确时长，不要估算
+- **时长精确性**: 使用 mutagen 从音频文件直接读取精确时长，不要估算
 - **场景顺序**: 必须严格按照 JSON 数组顺序添加场景
 - **字幕类型**: 使用 `add_subtitle` 确保正确的 `type: subtitle`
 - **字体选择**: 必须使用支持的字体（如 `Poppins_Bold`），不要使用 `System Bold` 等系统字体

@@ -50,7 +50,7 @@
 ### Step 1: 运行验证脚本
 
 ```bash
-python ~/.claude/scripts/verify_images.py /path/to/project_folder
+python ${CLAUDE_PLUGIN_ROOT}/scripts/verify_images.py /path/to/project_folder
 ```
 
 ### Step 2: 检查验证结果
@@ -293,7 +293,7 @@ python ~/.claude/scripts/verify_images.py /path/to/project_folder
 #### 使用验证脚本
 
 ```bash
-python ~/.claude/scripts/verify_images.py /path/to/project_folder
+python ${CLAUDE_PLUGIN_ROOT}/scripts/verify_images.py /path/to/project_folder
 ```
 
 脚本会自动：

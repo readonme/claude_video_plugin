@@ -156,13 +156,13 @@ audio_paths = [os.path.join(audio_folder, f) for f in audio_files]
 
 #### 5.1 使用脚本准备批量数据
 
-使用 `~/.claude/scripts/prepare_batch_data.py` 脚本生成批量数据：
+使用 `${CLAUDE_PLUGIN_ROOT}/scripts/prepare_batch_data.py` 脚本生成批量数据：
 
 ```bash
-python3 ~/.claude/scripts/prepare_batch_data.py <project_folder>
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/prepare_batch_data.py <project_folder>
 
 # 示例
-python3 ~/.claude/scripts/prepare_batch_data.py /Users/zhenhaohua/code/test_empty/r2_0
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/prepare_batch_data.py /Users/zhenhaohua/code/test_empty/r2_0
 ```
 
 **脚本功能**：
@@ -245,13 +245,13 @@ Batch data saved:
 
 ### Step 6: 生成 SRT 字幕文件
 
-使用 `~/.claude/scripts/generate_srt.py` 脚本生成带智能分割的 SRT 文件：
+使用 `${CLAUDE_PLUGIN_ROOT}/scripts/generate_srt.py` 脚本生成带智能分割的 SRT 文件：
 
 ```bash
-python3 ~/.claude/scripts/generate_srt.py <project_folder>
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/generate_srt.py <project_folder>
 
 # 示例
-python3 ~/.claude/scripts/generate_srt.py ~/projects/my_video
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/generate_srt.py ~/projects/my_video
 ```
 
 **脚本功能**：
@@ -347,7 +347,7 @@ python3 ~/.claude/scripts/generate_srt.py ~/projects/my_video
 
 **核心算法**：
 
-此逻辑已封装在 `~/.claude/scripts/prepare_batch_data.py` 脚本中。
+此逻辑已封装在 `${CLAUDE_PLUGIN_ROOT}/scripts/prepare_batch_data.py` 脚本中。
 
 脚本核心逻辑：
 1. 遍历 `script_output.json` 中的每个场景

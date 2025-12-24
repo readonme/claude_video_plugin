@@ -1,16 +1,16 @@
 # Build Complete Video from Project
 
 ## 任务目标
-从项目文件夹中读取 `script_output.json`，自动执行完整的视频生成流程：生成 TTS 音频、生成 AI 图像、创建 CapCut 草稿。
+从项目文件夹中读取 `script_output.json`，自动执行完整的视频生成流程：
+1. 生成 TTS 音频文件
+2. 生成 AI 图像
+3. 创建 CapCut 视频草稿
 
-**这是一个完整的自动化命令**，相当于依次执行：
-1. `/video-creator:audio` - 生成音频
-2. `/video-creator:image` - 生成图像
-3. `/video-creator:jianying_draft` - 创建视频草稿
+**这是一个一键式自动化命令**，无需手动分步执行。
 
 ## 输入要求
 - **必需参数**：项目文件夹路径（包含 `script_output.json` 的目录）
-
+·
 ## 用户使用方式
 
 ```bash
@@ -82,10 +82,8 @@
 **重要规则**：
 - 必须使用**绝对路径**作为 `script_file` 和 `output_dir`
 - `script_file` 必须指向包含 `script` 字段的 JSON 数组文件
+- 工具会自动处理完整的脚本文件，无需手动分批
 - 音频文件将按顺序命名：`audio_001.mp3`, `audio_002.mp3`, ...
-- **与 `/video-creator:audio` 的区别**：
-  - `script_batch_tts` 直接处理完整的 script_output.json，无需分批
-  - `/video-creator:audio` 使用 `text_to_speech_batch`，需要分批处理（每批最多10个）
 
 **输出示例**：
 ```
@@ -119,12 +117,10 @@
 **重要规则**：
 - 必须使用**绝对路径**作为 `script_file` 和 `output_dir`
 - `script_file` 必须包含 `prompt` 和 `image_count` 字段
+- 工具会根据 `image_count` 自动生成相应数量的图片
 - 图像文件命名规则：
   - 单图（image_count=1）：`image_XXX.png`
   - 多图（image_count>1）：`image_XXX_01.png`, `image_XXX_02.png`, ...
-- **与 `/video-creator:image` 的区别**：
-  - `script_batch_image_gen` 直接处理完整的 script_output.json
-  - `/video-creator:image` 使用 `prompt_to_image_batch`，可能需要手动配置参数
 
 **输出示例**：
 ```
@@ -209,11 +205,6 @@
   1. 在 JianYing Pro (剪映) 中打开草稿
   2. 预览视频效果
   3. 导出最终视频
-
-💡 提示: 如需单独执行某个步骤：
-  - 仅生成音频: /video-creator:audio /path/to/project
-  - 仅生成图像: /video-creator:image /path/to/project
-  - 仅创建草稿: /video-creator:jianying_draft /path/to/project
 ```
 
 ## 边界情况处理
@@ -263,9 +254,9 @@
 未完成步骤: Step 1, Step 2, Step 3
 
 建议:
-  1. 等待几分钟后重试
-  2. 或单独执行失败的步骤:
-     /video-creator:audio /path/to/project
+  1. 检查网络连接和 API 密钥配置
+  2. 等待几分钟后重试
+  3. 查看详细错误信息进行排查
 ```
 
 ## 性能优化
@@ -310,27 +301,3 @@
 - **分辨率固定**：当前版本使用固定的 1920x1080 分辨率（YouTube 横屏）
 - **音色固定**：当前版本使用固定的 `English_Gentle-voiced_man` 音色
 - **语速固定**：当前版本使用 1.2x 语速
-
-## 与单独命令的对比
-
-| 方式 | 命令数量 | MCP 工具 | 优点 | 缺点 |
-|------|---------|---------|------|------|
-| **单独命令** | 3 个 | `text_to_speech_batch`<br>`prompt_to_image_batch` | 灵活控制每个步骤，可自定义参数（音色、语速、模型等） | 需要手动执行多次，分批处理，容易遗漏步骤 |
-| **build 命令** | 1 个 | `script_batch_tts`<br>`script_batch_image_gen` | 自动化完整流程，一次处理完整 script 文件，无需分批 | 参数固定（当前版本） |
-
-**关键区别**：
-- **build 命令**使用专门的 `script_batch_*` 工具，直接处理完整的 `script_output.json` 文件
-- **单独命令**使用通用的 `*_batch` 工具，需要手动分批或配置参数
-
-**使用建议**：
-- 🎯 **推荐使用 build 命令**：适合标准工作流，快速生成视频，一键完成
-- ⚙️ **使用单独命令**：需要自定义参数（如音色、分辨率、语速、模型）时
-
-## 未来改进方向
-
-可能的增强功能（未来版本）：
-1. 支持自定义音色、语速、分辨率等参数
-2. 支持选择性执行步骤（如只生成音频和图像，不创建草稿）
-3. 支持进度保存和恢复（中断后继续）
-4. 支持预估时间和进度条
-5. 支持批量处理多个项目文件夹

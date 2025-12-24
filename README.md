@@ -33,11 +33,14 @@ claude plugin install video-creator
 |------|------|
 | `/video-creator:scene` | 拆分文本脚本为适合视频展示的场景/句子 |
 | `/video-creator:prompt` | 为每个场景生成 AI 图像提示词 |
+| `/video-creator:build` | **一键生成**：自动执行音频+图像+草稿完整流程 |
 | `/video-creator:audio` | 批量生成 TTS 语音文件 |
 | `/video-creator:image` | 批量生成 AI 图像 |
 | `/video-creator:jianying_draft` | 创建剪映/CapCut 草稿 |
 
 ## 使用流程
+
+### 🚀 快速流程（推荐）
 
 ```
 1. 准备文本脚本（.txt 文件）
@@ -48,13 +51,30 @@ claude plugin install video-creator
 3. 生成图像提示词
    /video-creator:prompt ./my_project
 
-4. 生成配音
+4. 一键生成视频（自动执行音频+图像+草稿）
+   /video-creator:build ./my_project
+
+5. 在剪映中编辑和导出
+```
+
+### ⚙️ 手动流程（自定义参数）
+
+```
+1. 准备文本脚本（.txt 文件）
+
+2. 拆分文本为场景
+   /video-creator:scene script.txt ./my_project
+
+3. 生成图像提示词
+   /video-creator:prompt ./my_project
+
+4. 生成配音（可自定义音色、语速）
    /video-creator:audio ./my_project
 
-5. 生成图像
+5. 生成图像（可自定义模型、分辨率）
    /video-creator:image ./my_project
 
-6. 创建视频草稿
+6. 创建视频草稿（可自定义分辨率）
    /video-creator:jianying_draft ./my_project
 
 7. 在剪映中编辑和导出

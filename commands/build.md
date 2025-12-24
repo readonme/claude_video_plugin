@@ -67,26 +67,25 @@
 
 ### Step 2: 生成 TTS 音频文件（使用 MCP 工具）
 
-使用 `mcp__minimax-tts__text_to_speech_batch` 工具批量生成音频：
+使用 `mcp__minimax-tts__script_batch_tts` 工具批量生成音频：
 
 **工具调用参数**：
 ```json
 {
-  "json_file": "<project_folder>/script_output.json",
+  "script_file": "<project_folder>/script_output.json",
   "output_dir": "<project_folder>/audio",
   "voice_id": "English_Gentle-voiced_man",
-  "speed": 1.2,
-  "sample_rate": 32000,
-  "audio_format": "mp3",
-  "naming_pattern": "sequential",
-  "start_index": 1
+  "speed": 1.2
 }
 ```
 
 **重要规则**：
-- 必须使用**绝对路径**作为 `json_file` 和 `output_dir`
-- `json_file` 必须指向包含 `script` 字段的 JSON 文件
+- 必须使用**绝对路径**作为 `script_file` 和 `output_dir`
+- `script_file` 必须指向包含 `script` 字段的 JSON 数组文件
 - 音频文件将按顺序命名：`audio_001.mp3`, `audio_002.mp3`, ...
+- **与 `/video-creator:audio` 的区别**：
+  - `script_batch_tts` 直接处理完整的 script_output.json，无需分批
+  - `/video-creator:audio` 使用 `text_to_speech_batch`，需要分批处理（每批最多10个）
 
 **输出示例**：
 ```
@@ -107,29 +106,25 @@
 
 ### Step 3: 生成 AI 图像（使用 MCP 工具）
 
-使用 `mcp__minimax-tts__prompt_to_image_batch` 工具批量生成图像：
+使用 `mcp__minimax-tts__script_batch_image_gen` 工具批量生成图像：
 
 **工具调用参数**：
 ```json
 {
-  "json_file": "<project_folder>/script_output.json",
-  "output_dir": "<project_folder>/images",
-  "model": "doubao-seedream-4-0-250828",
-  "size": "2K",
-  "image_format": "png",
-  "naming_pattern": "sequential",
-  "start_index": 1,
-  "concurrency": 5,
-  "stream": true
+  "script_file": "<project_folder>/script_output.json",
+  "output_dir": "<project_folder>/images"
 }
 ```
 
 **重要规则**：
-- 必须使用**绝对路径**作为 `json_file` 和 `output_dir`
-- `json_file` 必须包含 `prompt` 和 `image_count` 字段
+- 必须使用**绝对路径**作为 `script_file` 和 `output_dir`
+- `script_file` 必须包含 `prompt` 和 `image_count` 字段
 - 图像文件命名规则：
   - 单图（image_count=1）：`image_XXX.png`
   - 多图（image_count>1）：`image_XXX_01.png`, `image_XXX_02.png`, ...
+- **与 `/video-creator:image` 的区别**：
+  - `script_batch_image_gen` 直接处理完整的 script_output.json
+  - `/video-creator:image` 使用 `prompt_to_image_batch`，可能需要手动配置参数
 
 **输出示例**：
 ```
@@ -157,8 +152,7 @@
 {
   "project_folder": "<project_folder>",
   "width": 1920,
-  "height": 1080,
-  "draft_name": "<project_folder_name>"
+  "height": 1080
 }
 ```
 
@@ -167,6 +161,7 @@
 - 该工具会自动读取 `script_output.json`、`audio/` 和 `images/` 目录
 - 自动生成 SRT 字幕文件
 - 自动添加图片动画和转场效果
+- 草稿名称将自动使用项目文件夹名称
 
 **输出示例**：
 ```
@@ -318,14 +313,18 @@
 
 ## 与单独命令的对比
 
-| 方式 | 命令数量 | 优点 | 缺点 |
-|------|---------|------|------|
-| **单独命令** | 3 个 | 灵活控制每个步骤，可自定义参数 | 需要手动执行多次，容易遗漏步骤 |
-| **build 命令** | 1 个 | 自动化完整流程，节省时间 | 参数固定，无法自定义（当前版本） |
+| 方式 | 命令数量 | MCP 工具 | 优点 | 缺点 |
+|------|---------|---------|------|------|
+| **单独命令** | 3 个 | `text_to_speech_batch`<br>`prompt_to_image_batch` | 灵活控制每个步骤，可自定义参数（音色、语速、模型等） | 需要手动执行多次，分批处理，容易遗漏步骤 |
+| **build 命令** | 1 个 | `script_batch_tts`<br>`script_batch_image_gen` | 自动化完整流程，一次处理完整 script 文件，无需分批 | 参数固定（当前版本） |
+
+**关键区别**：
+- **build 命令**使用专门的 `script_batch_*` 工具，直接处理完整的 `script_output.json` 文件
+- **单独命令**使用通用的 `*_batch` 工具，需要手动分批或配置参数
 
 **使用建议**：
-- 🎯 **推荐使用 build 命令**：适合标准工作流，快速生成视频
-- ⚙️ **使用单独命令**：需要自定义参数（如音色、分辨率、语速）时
+- 🎯 **推荐使用 build 命令**：适合标准工作流，快速生成视频，一键完成
+- ⚙️ **使用单独命令**：需要自定义参数（如音色、分辨率、语速、模型）时
 
 ## 未来改进方向
 
